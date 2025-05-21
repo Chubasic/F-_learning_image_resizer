@@ -1,0 +1,8 @@
+# Img opt util
+
+## Commands
+
+```bash
+build - dotnet publish -c release -r linux-x64 
+run   - dotnet run ImageOpt.fs
+```
