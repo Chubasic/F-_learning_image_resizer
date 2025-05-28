@@ -1,8 +1,5 @@
 ﻿module ImageOpt
-
-
 // For more information see https://aka.ms/fsharp-console-apps
-// Created by Orest
 
 // from PIL import Image
 // import os, os.path
@@ -29,45 +26,110 @@ printfn $"{defaultFilesLocatios.DefaulyConf.Locations.OUTPUT_PATH}"
 // Use startegy pattern
 
 
-// let readLn = Console.ReadLine()
-// printfn $"{readLn}"
+type LoadedImage = { FileInfo: FileInfo; Image: SKImage }
+
+type ImageBitmap =
+    { FileInfo: FileInfo
+      imageBitmap: SKBitmap }
+
+type ImageEncoded =
+    { FileInfo: FileInfo
+      ImageEncoded: SKData }
+
+type ActionsConfig =
+    { Height: Option<int32>
+      Width: Option<int32>
+      WebOpt: Boolean
+      BlackAndWhite: Boolean } // Temporary
 
 
-type LoadedImage = {
-    FileInfo: FileInfo
-    Image: SKImage
-}
-
-let inputDir=
+let inputDir =
     let inputPath = defaultFilesLocatios.DefaulyConf.Locations.INPUT_PATH
     let dirInfo: DirectoryInfo = DirectoryInfo(inputPath)
-    if not dirInfo.Exists then  
-        printfn ".:Input directory does not exist:.\n Created\n\b" 
-        dirInfo.Create()
-        
-    dirInfo 
-        
 
-let images (dirInfo: DirectoryInfo): List<FileInfo> = List.ofArray (dirInfo.GetFiles())
-    
-let loadImage (fileInfo: FileInfo): LoadedImage =
+    if not dirInfo.Exists then
+        printfn ".:Input directory does not exist:.\n Created\n\b"
+        dirInfo.Create()
+
+    dirInfo
+
+
+let images (dirInfo: DirectoryInfo) : List<FileInfo> = List.ofArray (dirInfo.GetFiles())
+
+
+let loadImage (fileInfo: FileInfo) : LoadedImage =
     let inputPath = defaultFilesLocatios.DefaulyConf.Locations.INPUT_PATH
     let image = SKImage.FromEncodedData($"{inputPath}/{fileInfo.Name}")
     printfn $"Loading file {inputPath}/{fileInfo.Name}"
-    {FileInfo = fileInfo; Image=image}
-    
-    
+    { FileInfo = fileInfo; Image = image }
 
-let webOptimized (bitmap: SKBitmap): SKData = 
-    bitmap.Encode(SKEncodedImageFormat.Jpeg, 60)
-    
+let helpMsg =
+    printfn
+        "
+::Simple transformation util::\n
+--bw --> Make image black&white\n
+--res --> Resize image to dimensions\n
+--web --> Optimize web image to use in web\n"
+
+let parseWebOptArg (input: string) (parsed: ActionsConfig) : ActionsConfig =
+    let pattern = @"(--web)"
+
+    match Regex.IsMatch(input, pattern) with
+    | true ->
+        { WebOpt = true
+          Width = parsed.Height
+          Height = parsed.Height
+          BlackAndWhite = parsed.BlackAndWhite }
+    | _ -> parsed
 
 
-let save (fileInfo: FileInfo) (data: SKData) = 
-    let outputPath = defaultFilesLocatios.DefaulyConf.Locations.OUTPUT_PATH
-    use stream = new  FileStream($"{outputPath}/{fileInfo.Name}", FileMode.Create)
-    do stream.Write(data.ToArray(), 0, int data.Size)
+let parseBlackAndWhiteArg (input: string) (parsed: ActionsConfig) : ActionsConfig =
+    let pattern = @"(--bw)"
 
+    match Regex.IsMatch(input, pattern) with
+    | true ->
+        { BlackAndWhite = true
+          Width = parsed.Height
+          Height = parsed.Height
+          WebOpt = parsed.WebOpt }
+    | _ -> parsed
+
+
+let parseResizeArg (input: string) (parsed: ActionsConfig) : ActionsConfig =
+    let pattern = @"--res\s+(\d+)\s+(\d+)"
+    let regex = Regex(pattern)
+
+    match regex.Match(input) with
+    | m when m.Success ->
+        let width = int m.Groups.[1].Value
+        let height = int m.Groups.[2].Value
+        let restArgs = regex.Replace(input, "").Trim().Split(" ")
+
+        { Width = Some width
+          Height = Some height
+          BlackAndWhite = parsed.BlackAndWhite
+          WebOpt = parsed.WebOpt }
+
+    | _ -> parsed
+
+
+let parseArgs input : ActionsConfig =
+    let withCases =
+        parseBlackAndWhiteArg input >> parseResizeArg input >> parseWebOptArg input
+
+    withCases
+        { Width = None
+          Height = None
+          WebOpt = false
+          BlackAndWhite = false }
+
+
+// No need to bitmap for web opt
+// Produces black square images
+
+let toBitmap (loadedImage: LoadedImage) : ImageBitmap =
+    { FileInfo = loadedImage.FileInfo
+      imageBitmap = new SKBitmap(loadedImage.Image.Info) }
 
 (* Actions:
     - TODO: Resize to demensions.
@@ -75,42 +137,65 @@ let save (fileInfo: FileInfo) (data: SKData) =
     - TODO: Make B&W
 *)
 
-let helpMsg = printfn "
-::Simple transformation util::\n
---bw --> Make image black&white\n
---res --> Resize image to dimensions\n
---web --> Optimize web image to use in web\n"
 
+let webOptimized (loadedImage: LoadedImage) : ImageEncoded =
+    { FileInfo = loadedImage.FileInfo
+      ImageEncoded = loadedImage.Image.Encode(SKEncodedImageFormat.Jpeg, 70) }
 
-let parsePattern input = 
-    let pattern = @"--res\s+(\d+)\s+(\d+)\s+--bw\s+--web"
-    let regex = Regex(pattern)
-    match regex.Match(input) with
-    (*
-    Regex Match: The regex.Match(input) function is used to find a match in the input string.
-    Match Groups: If a match is found, m.Groups.[1].Value and m.Groups.[2].Value extract 
-    the captured width and height as strings, which are then converted to integers.
-    *)
-    | m when m.Success ->
-        let width = int m.Groups.[1].Value
-        let height = int m.Groups.[2].Value
-        Some (width, height)
-    | _ -> None
+let defaultEncode (loadedImage: LoadedImage) : ImageEncoded =
+    { FileInfo = loadedImage.FileInfo
+      ImageEncoded = loadedImage.Image.Encode(SKEncodedImageFormat.Jpeg, 100) }
+
+let blackAndWhite (image) = failwith "Not implemented"
+
+let resize image = failwith "Not implemented"
 
 
 
-let parseAction args = List.map (fun arg -> 
-    match arg with
-    | "--bw" -> printfn "Black and White"
-    | "--res" -> printfn "Resize"
-    | "--web" -> printfn "Web opt"
-    | _ -> helpMsg
-    )
+let saveFiles (encodedImages: List<ImageEncoded>) =
+    let save (encodedImage: ImageEncoded) =
+        let fileName = encodedImage.FileInfo.Name
+        let data = encodedImage.ImageEncoded.ToArray()
+        let fileSize = int encodedImage.ImageEncoded.Size
 
-let result = inputDir |> images |> List.map (fun file -> (loadImage file))
-printf $"Files names: %A{result}"
- 
-def main():
+        let outputPath = defaultFilesLocatios.DefaulyConf.Locations.OUTPUT_PATH
+        use stream = new FileStream($"{outputPath}/{fileName}", FileMode.Create)
+        do stream.Write(data, 0, fileSize)
+
+    List.map save encodedImages
+
+let processImage (config: ActionsConfig) (loadedImage: LoadedImage) =
+    loadedImage
+    // |> toBitmap
+    |> if config.WebOpt then webOptimized else defaultEncode
+
+let processImages (configuredProcessor: LoadedImage -> ImageEncoded) (images: List<LoadedImage>) =
+    List.map configuredProcessor images
+
+
+let main =
+    let readLn = Console.ReadLine()
+    printfn $"Input - {readLn} \n"
+    let config = readLn |> parseArgs
+
+    printfn $"Parsed config {config} \n"
+
+    let configuredProcessor = processImage config
+
+    let loadedImages =
+        inputDir
+        |> images
+        |> List.map (fun file -> loadImage file)
+        |> processImages configuredProcessor
+        |> saveFiles
+
+    printf $"Loaded files: %A{loadedImages} \n"
+
+
+
+
+
+
 // 	"""
 // 	CONFIGURATIONS
 // 	"""
@@ -178,5 +263,4 @@ def main():
 
 
 // if __name__ == '__main__':
-// 	main()
-
+// main
