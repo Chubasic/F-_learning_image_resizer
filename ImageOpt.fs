@@ -146,11 +146,52 @@ let defaultEncode (loadedImage: LoadedImage) : ImageEncoded =
     { FileInfo = loadedImage.FileInfo
       ImageEncoded = loadedImage.Image.Encode(SKEncodedImageFormat.Jpeg, 100) }
 
-let blackAndWhite (image) = failwith "Not implemented"
+let blackAndWhite (loadedImage: LoadedImage) : LoadedImage =
+    let paint = new SKPaint()
+
+    let grayMatrix =
+        SKColorFilter.CreateColorMatrix(
+            [| 0.21f
+               0.72f
+               0.07f
+               0f
+               0f
+               0.21f
+               0.72f
+               0.07f
+               0f
+               0f
+               0.21f
+               0.72f
+               0.07f
+               0f
+               0f
+               0f
+               0f
+               0f
+               1f
+               0f |]
+        )
+
+    paint.ColorFilter <- grayMatrix
+
+    let imgFilter: SKImageFilter = SKImageFilter.CreateColorFilter(grayMatrix)
+    let image = loadedImage.Image
+    let proccessingArea = SKRectI(0, 0, image.Width, image.Height)
+
+    let mutable outSubset = SKRectI()
+    let mutable outOffset = SKPoint()
+
+    let bwImage =
+        image.ApplyImageFilter(imgFilter, proccessingArea, proccessingArea, &outSubset, &outOffset)
+
+    { FileInfo = loadedImage.FileInfo
+      Image = bwImage }
+
 
 let resize image = failwith "Not implemented"
 
-
+let passLoadedImage (loadedImage: LoadedImage) = loadedImage
 
 let saveFiles (encodedImages: List<ImageEncoded>) =
     let save (encodedImage: ImageEncoded) =
@@ -167,6 +208,10 @@ let saveFiles (encodedImages: List<ImageEncoded>) =
 let processImage (config: ActionsConfig) (loadedImage: LoadedImage) =
     loadedImage
     // |> toBitmap
+    |> if config.BlackAndWhite then
+           blackAndWhite
+       else
+           passLoadedImage
     |> if config.WebOpt then webOptimized else defaultEncode
 
 let processImages (configuredProcessor: LoadedImage -> ImageEncoded) (images: List<LoadedImage>) =
@@ -189,55 +234,8 @@ let main =
         |> processImages configuredProcessor
         |> saveFiles
 
-    printf $"Loaded files: %A{loadedImages} \n"
+    printf $"%A{loadedImages.Length} files loaded\n"
 
-
-
-
-
-
-// 	"""
-// 	CONFIGURATIONS
-// 	"""
-// 	config = configparser.ConfigParser()
-// 	config.read("configurations.cfg")
-// 	input_path = config.get('CONFIGS', 'input_path')
-// 	output_path = config.get('CONFIGS', 'output_path')
-// 	water_path = config.get('CONFIGS', 'water_path')
-// 	Width = int(config.get('CONFIGS', 'width'))
-// 	Height = int(config.get('CONFIGS', 'height'))
-
-// 	os.chdir(output_path)
-// 	for wfiles in os.listdir(output_path):
-// 		watermark(wfiles, output_path, Width, Height)
-
-
-// 	os.chdir(input_path)
-// 	for files in os.listdir(input_path):
-// 		resize(files, Width, Height, output_path)
-
-
-// """
-// Open file(s)and place watermark on image
-// """
-// def resize(files, Width, Height, output_path):
-
-// 	photo = Image.open(files).convert('RGBA')
-// 	photoW, photoH = photo.size
-// 	if Width is None and Height is not None:
-// 		photoW = (photoW * Height) / photoH
-// 		photoH = Height
-// 	elif Width is not None and Height is None:
-// 		photoH = (photoH * Width) / photoW
-// 		photoW = Width
-// 	elif Width is not None and Height is not None:
-// 		photoW = Width
-// 		photoH = Width
-// 	layer = Image.new('RGBA', (Width, Height), (0,0,0,0))
-// 	photo_resize = photo.resize((int(photoW), int(photoH)), Image.LANCZOS)
-// 	insert = ((Width - photoW), (Height - photoH))
-// 	layer.paste(photo_resize, insert)
-// 	layer.save(os.path.join(output_path, files))
 
 
 // def watermark(wfiles, output_path, Width, Height):
