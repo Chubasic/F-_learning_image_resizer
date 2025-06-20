@@ -234,7 +234,7 @@ let main =
         |> processImages configuredProcessor
         |> saveFiles
 
-    printf $"Loaded files: %A{loadedImages} \n"
+    printf $"%A{loadedImages.Length} files loaded\n"
 
 
 
